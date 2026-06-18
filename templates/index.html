@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ site_title }} - Register</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="register-panel" aria-labelledby="page-title">
+        <div class="server-mark">AzerothCore</div>
+        <h1 id="page-title">{{ site_title }}</h1>
+        <p class="subtitle">创建账号后，即可登录服务器开始游戏。</p>
+
+        <div class="status-message" id="statusMessage" role="status" aria-live="polite" hidden></div>
+
+        <form id="registerForm" class="register-form" method="post" action="{{ url_for('register') }}" novalidate>
+          <label>
+            <span>账号名</span>
+            <input
+              type="text"
+              name="username"
+              autocomplete="username"
+              minlength="3"
+              maxlength="16"
+              pattern="[A-Za-z0-9_]{3,16}"
+              required
+              placeholder="player_abc">
+          </label>
+
+          <label>
+            <span>密码</span>
+            <input
+              type="password"
+              name="password"
+              autocomplete="new-password"
+              minlength="6"
+              maxlength="32"
+              required
+              placeholder="6-32 位，不能有空格">
+          </label>
+
+          <label>
+            <span>确认密码</span>
+            <input
+              type="password"
+              name="confirm_password"
+              autocomplete="new-password"
+              minlength="6"
+              maxlength="32"
+              required
+              placeholder="再次输入密码">
+          </label>
+
+          <label>
+            <span>邮箱</span>
+            <input type="email" name="email" autocomplete="email" placeholder="可选">
+          </label>
+
+          <button type="submit" id="submitButton">注册账号</button>
+        </form>
+
+        <div class="realm-box">
+          <span>Realmlist</span>
+          <strong>set realmlist {{ realmlist }}</strong>
+        </div>
+
+        <p class="fine-print">轻量注册入口，账号创建由 AzerothCore worldserver SOAP 完成。</p>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+  </body>
+</html>

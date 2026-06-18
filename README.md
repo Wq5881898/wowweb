@@ -1,0 +1,72 @@
+# WoW Register Lite
+
+一个用于 AzerothCore 的轻量账号注册网站。前端提供注册表单，Flask 后端校验输入，并通过 AzerothCore worldserver SOAP 执行固定格式的账号创建命令。
+
+## 功能
+
+- 账号名、密码、确认密码、邮箱格式校验
+- 通过 SOAP 执行 `account create username password`
+- 注册成功、重复账号、SOAP 不可用等友好提示
+- 简单 IP 限流
+- 基础日志记录到 `logs/app.log`
+- 响应式深色魔幻风格页面
+
+## 本地运行
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+$env:SOAP_HOST = "127.0.0.1"
+$env:SOAP_PORT = "7878"
+$env:SOAP_USER = "websoap"
+$env:SOAP_PASS = "your-strong-password"
+$env:SITE_TITLE = "My WoW Server"
+$env:REALMLIST = "wow.example.com"
+python app.py
+```
+
+访问：
+
+```text
+http://127.0.0.1:8000/
+```
+
+## 正式运行
+
+```powershell
+waitress-serve --host=0.0.0.0 --port=8000 app:app
+```
+
+对外开放时请使用 HTTPS，并通过 IIS、Nginx 或其他反向代理转发到本地 Python 服务。
+
+## AzerothCore SOAP 配置
+
+在 `worldserver.conf` 中启用 SOAP：
+
+```ini
+SOAP.Enabled = 1
+SOAP.IP = "127.0.0.1"
+SOAP.Port = 7878
+```
+
+SOAP 端口只应监听 `127.0.0.1`，不要直接暴露到公网。
+
+创建一个专用于网站的 SOAP 账号，例如 `websoap`，并给它足够执行 `account create` 的权限。该账号不要作为玩家账号使用。
+
+## 环境变量
+
+| 名称 | 默认值 | 说明 |
+| --- | --- | --- |
+| `SOAP_HOST` | `127.0.0.1` | AzerothCore SOAP 地址 |
+| `SOAP_PORT` | `7878` | AzerothCore SOAP 端口 |
+| `SOAP_USER` | `websoap` | SOAP 账号 |
+| `SOAP_PASS` | `change-me` | SOAP 密码 |
+| `SITE_TITLE` | `My WoW Server` | 页面服务器名称 |
+| `REALMLIST` | `wow.example.com` | 页面展示的 realmlist |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | 限流窗口 |
+| `RATE_LIMIT_MAX_ATTEMPTS` | `3` | 每个窗口允许提交次数 |
+
+## 安全说明
+
+后端只接受账号名和密码字段，并且账号名只能包含英文字母、数字和下划线。提交到 SOAP 的命令固定为 `account create username password`，不会允许用户提交任意 GM 命令。
