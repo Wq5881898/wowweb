@@ -3,10 +3,13 @@ import logging
 import os
 import random
 import re
+import secrets
+import smtplib
 import sqlite3
 import time
 import uuid
 from collections import defaultdict, deque
+from email.message import EmailMessage
 from functools import wraps
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -55,6 +58,7 @@ app.secret_key = app.config["SECRET_KEY"]
 app.config["MAX_CONTENT_LENGTH"] = app.config["MAX_UPLOAD_MB"] * 1024 * 1024
 
 registration_attempts = defaultdict(deque)
+password_reset_attempts = defaultdict(deque)
 
 
 def setup_logging():
@@ -103,6 +107,22 @@ def init_site_db():
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER,
+                request_ip TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_password_reset_account ON password_reset_tokens(account_id)"
         )
         existing_issue_columns = {
             row[1] for row in db.execute("PRAGMA table_info(issues)").fetchall()
@@ -235,6 +255,33 @@ def update_account_password(account_id, username, new_password):
         db.commit()
 
 
+def update_account_email(account_id, email):
+    normalized_email = email.strip().upper()
+    with auth_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "UPDATE account SET email = %s, reg_mail = %s WHERE id = %s",
+                (normalized_email, normalized_email, account_id),
+            )
+        db.commit()
+
+
+def find_account_for_reset(username, email):
+    safe_username = normalize_account_text(username)
+    safe_email = (email or "").strip().upper()
+    with auth_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, email
+                FROM account
+                WHERE username = %s AND UPPER(email) = %s AND email <> ''
+                """,
+                (safe_username, safe_email),
+            )
+            return cursor.fetchone()
+
+
 def count_user_characters(account_id):
     with characters_db() as db:
         with db.cursor() as cursor:
@@ -342,6 +389,110 @@ def rate_limit_ok(ip_address):
     return True
 
 
+def reset_rate_limit_ok(ip_address):
+    now = time.time()
+    window_start = now - app.config["PASSWORD_RESET_RATE_WINDOW_SECONDS"]
+    attempts = password_reset_attempts[ip_address]
+
+    while attempts and attempts[0] < window_start:
+        attempts.popleft()
+
+    if len(attempts) >= app.config["PASSWORD_RESET_RATE_MAX_ATTEMPTS"]:
+        return False
+
+    attempts.append(now)
+    return True
+
+
+def token_digest(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_password_reset_token(account_id, request_ip):
+    token = secrets.token_urlsafe(32)
+    expires_at = int(time.time()) + app.config["PASSWORD_RESET_EXPIRE_MINUTES"] * 60
+    digest = token_digest(token)
+
+    with site_db() as db:
+        db.execute(
+            "UPDATE password_reset_tokens SET used_at = ? WHERE account_id = ? AND used_at IS NULL",
+            (int(time.time()), account_id),
+        )
+        db.execute(
+            """
+            INSERT INTO password_reset_tokens(account_id, token_hash, expires_at, request_ip)
+            VALUES(?, ?, ?, ?)
+            """,
+            (account_id, digest, expires_at, request_ip),
+        )
+        db.commit()
+
+    return token
+
+
+def get_valid_reset_token(token):
+    digest = token_digest(token)
+    with site_db() as db:
+        return db.execute(
+            """
+            SELECT *
+            FROM password_reset_tokens
+            WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ?
+            """,
+            (digest, int(time.time())),
+        ).fetchone()
+
+
+def consume_reset_token(token):
+    digest = token_digest(token)
+    with site_db() as db:
+        db.execute(
+            "UPDATE password_reset_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL",
+            (int(time.time()), digest),
+        )
+        db.commit()
+
+
+def send_password_reset_email(recipient, username, reset_url):
+    message = EmailMessage()
+    message["Subject"] = f"{app.config['SITE_TITLE']} 密码重置"
+    message["From"] = app.config["SMTP_FROM"]
+    message["To"] = recipient
+    message.set_content(
+        f"""你好，{username}：
+
+我们收到了你的密码重置请求。
+
+请在 {app.config['PASSWORD_RESET_EXPIRE_MINUTES']} 分钟内打开下面的链接：
+{reset_url}
+
+如果不是你本人操作，请忽略这封邮件。
+"""
+    )
+
+    if app.config["SMTP_USE_SSL"]:
+        smtp = smtplib.SMTP_SSL(
+            app.config["SMTP_HOST"],
+            app.config["SMTP_PORT"],
+            timeout=app.config["SMTP_TIMEOUT_SECONDS"],
+        )
+    else:
+        smtp = smtplib.SMTP(
+            app.config["SMTP_HOST"],
+            app.config["SMTP_PORT"],
+            timeout=app.config["SMTP_TIMEOUT_SECONDS"],
+        )
+
+    try:
+        if app.config["SMTP_USE_TLS"] and not app.config["SMTP_USE_SSL"]:
+            smtp.starttls()
+        if app.config["SMTP_USER"]:
+            smtp.login(app.config["SMTP_USER"], app.config["SMTP_PASS"])
+        smtp.send_message(message)
+    finally:
+        smtp.quit()
+
+
 def refresh_captcha():
     left = random.randint(2, 9)
     right = random.randint(2, 9)
@@ -373,7 +524,10 @@ def validate_registration(data):
     if password != confirm_password:
         return None, "两次输入的密码不一致。"
 
-    if email and (any(char.isspace() for char in email) or not EMAIL_RE.fullmatch(email)):
+    if not email:
+        return None, "请输入邮箱，邮箱将用于密码找回。"
+
+    if any(char.isspace() for char in email) or not EMAIL_RE.fullmatch(email):
         return None, "邮箱格式不正确。"
 
     return {"username": username, "password": password, "email": email}, None
@@ -507,6 +661,75 @@ def forgot_password():
     return render_template("forgot_password.html")
 
 
+@app.post("/forgot-password")
+def request_password_reset():
+    username = (request.form.get("username") or "").strip()
+    email = (request.form.get("email") or "").strip()
+    generic_message = "如果账号和邮箱匹配，重置邮件将在几分钟内发送。"
+
+    if not username or not email:
+        flash("账号名和邮箱都必须填写。", "error")
+        return redirect(url_for("forgot_password"))
+
+    if not EMAIL_RE.fullmatch(email) or any(char.isspace() for char in email):
+        flash("邮箱格式不正确。", "error")
+        return redirect(url_for("forgot_password"))
+
+    if not reset_rate_limit_ok(client_ip()):
+        flash("请求太频繁，请稍后再试。", "error")
+        return redirect(url_for("forgot_password"))
+
+    try:
+        account = find_account_for_reset(username, email)
+        if account and app.config["SMTP_HOST"] and app.config["SMTP_FROM"]:
+            token = create_password_reset_token(account["id"], client_ip())
+            reset_url = (
+                f"{app.config['PUBLIC_BASE_URL']}"
+                f"{url_for('reset_password', token=token)}"
+            )
+            send_password_reset_email(account["email"], account["username"], reset_url)
+        elif account:
+            app.logger.error("Password reset requested but SMTP is not configured")
+    except Exception:
+        app.logger.exception("Password reset email failed")
+
+    flash(generic_message, "success")
+    return redirect(url_for("forgot_password"))
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    token_row = get_valid_reset_token(token)
+    if not token_row:
+        flash("重置链接无效或已经过期。", "error")
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        new_password = request.form.get("new_password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+
+        if not 6 <= len(new_password) <= 32 or any(char.isspace() for char in new_password):
+            flash("新密码必须为 6 到 32 位，并且不能包含空格。", "error")
+            return redirect(url_for("reset_password", token=token))
+
+        if new_password != confirm_password:
+            flash("两次输入的新密码不一致。", "error")
+            return redirect(url_for("reset_password", token=token))
+
+        account = get_account_by_id(token_row["account_id"])
+        if not account:
+            flash("账号不存在。", "error")
+            return redirect(url_for("forgot_password"))
+
+        update_account_password(account["id"], account["username"], new_password)
+        consume_reset_token(token)
+        session.clear()
+        flash("密码已重置，请使用新密码登录。", "success")
+        return redirect(url_for("index"))
+
+    return render_template("reset_password.html", token=token)
+
+
 @app.post("/register")
 def register():
     ip_address = client_ip()
@@ -522,7 +745,10 @@ def register():
         refresh_captcha()
         return handle_form_response(False, validation_error, 400)
 
-    command = f"account create {payload['username']} {payload['password']}"
+    command = (
+        f"account create {payload['username']} "
+        f"{payload['password']} {payload['email']}"
+    )
 
     try:
         result = execute_soap_command(command)
@@ -581,7 +807,7 @@ def dashboard():
 @app.get("/account/security")
 @login_required
 def account_security():
-    return render_template("account_security.html")
+    return render_template("account_security.html", user=current_user())
 
 
 @app.post("/account/security")
@@ -607,6 +833,26 @@ def change_password():
     update_account_password(account["id"], account["username"], new_password)
     flash("密码已修改，请使用新密码登录。", "success")
     return redirect(url_for("dashboard"))
+
+
+@app.post("/account/email")
+@login_required
+def change_email():
+    password = request.form.get("password") or ""
+    email = (request.form.get("email") or "").strip()
+    account = get_account_by_id(session["account_id"], include_secret=True)
+
+    if not account or not check_account_password(account, password):
+        flash("当前密码不正确。", "error")
+        return redirect(url_for("account_security"))
+
+    if not email or any(char.isspace() for char in email) or not EMAIL_RE.fullmatch(email):
+        flash("请输入有效邮箱。", "error")
+        return redirect(url_for("account_security"))
+
+    update_account_email(account["id"], email)
+    flash("邮箱已更新，可以用于密码找回。", "success")
+    return redirect(url_for("account_security"))
 
 
 @app.get("/downloads")

@@ -27,5 +27,21 @@
         <button type="submit">保存新密码</button>
       </form>
     </section>
+
+    <section class="tool-panel">
+      <h2>绑定邮箱</h2>
+      <p class="empty-text">当前邮箱：{{ user.email or "尚未绑定" }}</p>
+      <form class="auth-form" method="post" action="{{ url_for('change_email') }}">
+        <label>
+          <span>新邮箱</span>
+          <input type="email" name="email" autocomplete="email" required>
+        </label>
+        <label>
+          <span>当前密码</span>
+          <input type="password" name="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit">保存邮箱</button>
+      </form>
+    </section>
   </main>
 {% endblock %}
