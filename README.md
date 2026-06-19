@@ -17,12 +17,14 @@
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
 $env:SOAP_HOST = "127.0.0.1"
 $env:SOAP_PORT = "7878"
 $env:SOAP_USER = "websoap"
 $env:SOAP_PASS = "your-strong-password"
 $env:SITE_TITLE = "My WoW Server"
 $env:REALMLIST = "wow.example.com"
+
 python app.py
 ```
 
@@ -50,9 +52,11 @@ SOAP.IP = "127.0.0.1"
 SOAP.Port = 7878
 ```
 
-SOAP 端口只应监听 `127.0.0.1`，不要直接暴露到公网。
+修改后需要重启 `worldserver`。
 
-创建一个专用于网站的 SOAP 账号，例如 `websoap`，并给它足够执行 `account create` 的权限。该账号不要作为玩家账号使用。
+SOAP 端口只应该监听 `127.0.0.1`，不要直接暴露到公网。
+
+创建一个专门用于网站的 SOAP 账号，例如 `websoap`，并给它足够执行 `account create` 的权限。该账号不要作为玩家账号使用。
 
 ## 环境变量
 
@@ -62,11 +66,32 @@ SOAP 端口只应监听 `127.0.0.1`，不要直接暴露到公网。
 | `SOAP_PORT` | `7878` | AzerothCore SOAP 端口 |
 | `SOAP_USER` | `websoap` | SOAP 账号 |
 | `SOAP_PASS` | `change-me` | SOAP 密码 |
+| `SOAP_TIMEOUT_SECONDS` | `8` | SOAP 请求超时时间 |
 | `SITE_TITLE` | `My WoW Server` | 页面服务器名称 |
 | `REALMLIST` | `wow.example.com` | 页面展示的 realmlist |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | 限流窗口 |
 | `RATE_LIMIT_MAX_ATTEMPTS` | `3` | 每个窗口允许提交次数 |
 
+## 验收清单
+
+- 本机访问 `http://127.0.0.1:8000/` 可以打开注册页面
+- 合法账号和密码可以成功注册
+- HeidiSQL 中可以在 `acore_auth.account` 表看到新账号
+- 游戏客户端可以用新账号正常登录
+- 重复注册同名账号时，页面提示账号已存在
+- 非法账号名会被阻止提交
+- 两次密码不一致时，页面提示错误
+- `worldserver` 关闭时，页面提示注册服务暂时不可用
+- SOAP 端口没有暴露到公网
+- Python 后端只执行固定格式的 `account create username password`
+
 ## 安全说明
 
-后端只接受账号名和密码字段，并且账号名只能包含英文字母、数字和下划线。提交到 SOAP 的命令固定为 `account create username password`，不会允许用户提交任意 GM 命令。
+后端会校验所有用户输入。账号名只允许英文字母、数字和下划线，密码不允许空格，提交到 SOAP 的命令固定为 `account create username password`，不会允许用户提交任意 GM 命令。
+
+正式开放给玩家前建议增加：
+
+- HTTPS
+- Cloudflare Turnstile 验证码
+- 更完整的 IP 限流
+- 使用环境变量或 `.env` 管理真实 SOAP 密码，不要把真实密码提交到 GitHub

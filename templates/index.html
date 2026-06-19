@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ site_title }} - Register</title>
+    <title>{{ site_title }} - 注册账号</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   </head>
   <body>
@@ -55,7 +55,11 @@
 
           <label>
             <span>邮箱</span>
-            <input type="email" name="email" autocomplete="email" placeholder="可选">
+            <input
+              type="email"
+              name="email"
+              autocomplete="email"
+              placeholder="可选">
           </label>
 
           <button type="submit" id="submitButton">注册账号</button>

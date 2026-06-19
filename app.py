@@ -116,7 +116,10 @@ def parse_soap_response(text):
 
 def execute_soap_command(command):
     url = f"http://{app.config['SOAP_HOST']}:{app.config['SOAP_PORT']}/"
-    headers = {"Content-Type": "text/xml; charset=utf-8", "SOAPAction": "urn:AC#executeCommand"}
+    headers = {
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": "urn:AC#executeCommand",
+    }
     response = requests.post(
         url,
         data=soap_envelope(command).encode("utf-8"),
@@ -131,9 +134,7 @@ def execute_soap_command(command):
 def classify_registration_error(error):
     text = str(error).lower()
 
-    if isinstance(error, requests.exceptions.ConnectTimeout) or isinstance(
-        error, requests.exceptions.ReadTimeout
-    ):
+    if isinstance(error, (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout)):
         return "服务器响应超时，请稍后再试。"
 
     if isinstance(error, requests.exceptions.ConnectionError):
