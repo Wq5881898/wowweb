@@ -127,8 +127,12 @@ def execute_soap_command(command):
         auth=(app.config["SOAP_USER"], app.config["SOAP_PASS"]),
         timeout=app.config["SOAP_TIMEOUT_SECONDS"],
     )
+    parsed_response = parse_soap_response(response.text)
+    if response.status_code >= 400 and response.status_code not in {401, 403} and parsed_response:
+        raise ValueError(parsed_response)
+
     response.raise_for_status()
-    return parse_soap_response(response.text)
+    return parsed_response
 
 
 def classify_registration_error(error):
