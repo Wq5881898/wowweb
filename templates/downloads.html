@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <main class="content-shell">
+    <section class="page-heading">
+      <div>
+        <span class="server-mark">Downloads</span>
+        <h1>客户端下载</h1>
+      </div>
+    </section>
+
+    {% if user.gmlevel >= 3 %}
+      <section class="tool-panel">
+        <h2>添加下载链接</h2>
+        <form class="management-form" method="post" action="{{ url_for('save_download') }}">
+          <label>
+            <span>标题</span>
+            <input type="text" name="title" required placeholder="完整客户端">
+          </label>
+          <label>
+            <span>链接</span>
+            <input type="url" name="url" required placeholder="https://example.com/client.zip">
+          </label>
+          <label class="wide-field">
+            <span>说明</span>
+            <textarea name="description" rows="3" placeholder="版本、大小、解压说明等"></textarea>
+          </label>
+          <button type="submit">添加</button>
+        </form>
+      </section>
+    {% endif %}
+
+    <section class="list-grid">
+      {% for link in links %}
+        <article class="download-item">
+          <div class="item-main">
+            <h2>{{ link.title }}</h2>
+            <p>{{ link.description or "暂无说明" }}</p>
+            <a class="primary-link" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">打开下载链接</a>
+          </div>
+
+          {% if user.gmlevel >= 3 %}
+            <details class="edit-box">
+              <summary>编辑</summary>
+              <form class="management-form compact" method="post" action="{{ url_for('save_download') }}">
+                <input type="hidden" name="link_id" value="{{ link.id }}">
+                <label>
+                  <span>标题</span>
+                  <input type="text" name="title" value="{{ link.title }}" required>
+                </label>
+                <label>
+                  <span>链接</span>
+                  <input type="url" name="url" value="{{ link.url }}" required>
+                </label>
+                <label class="wide-field">
+                  <span>说明</span>
+                  <textarea name="description" rows="3">{{ link.description }}</textarea>
+                </label>
+                <button type="submit">保存</button>
+              </form>
+              <form method="post" action="{{ url_for('save_download') }}">
+                <input type="hidden" name="link_id" value="{{ link.id }}">
+                <input type="hidden" name="action" value="delete">
+                <button class="danger-button" type="submit">删除</button>
+              </form>
+            </details>
+          {% endif %}
+        </article>
+      {% else %}
+        <p class="empty-text">还没有下载链接。</p>
+      {% endfor %}
+    </section>
+  </main>
+{% endblock %}

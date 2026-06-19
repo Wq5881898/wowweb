@@ -1,79 +1,79 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ site_title }} - 注册账号</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-  </head>
-  <body>
-    <main class="page-shell">
-      <section class="register-panel" aria-labelledby="page-title">
-        <div class="server-mark">AzerothCore</div>
-        <h1 id="page-title">{{ site_title }}</h1>
-        <p class="subtitle">创建账号后，即可登录服务器开始游戏。</p>
+{% extends "layout.html" %}
 
-        <div class="status-message" id="statusMessage" role="status" aria-live="polite" hidden></div>
+{% block content %}
+  <main class="auth-page">
+    <section class="auth-panel" aria-labelledby="page-title">
+      <div class="server-mark">Account Center</div>
+      <h1 id="page-title">{{ site_title }}</h1>
+      <p class="subtitle">登录账号进入用户中心，也可以在这里创建新的游戏账号。</p>
 
-        <form id="registerForm" class="register-form" method="post" action="{{ url_for('register') }}" novalidate>
-          <label>
-            <span>账号名</span>
-            <input
-              type="text"
-              name="username"
-              autocomplete="username"
-              minlength="3"
-              maxlength="16"
-              pattern="[A-Za-z0-9_]{3,16}"
-              required
-              placeholder="player_abc">
-          </label>
+      <div class="auth-tabs" role="tablist" aria-label="账号操作">
+        <button class="tab-button active" type="button" data-auth-tab="login">登录</button>
+        <button class="tab-button" type="button" data-auth-tab="register">注册</button>
+      </div>
 
-          <label>
-            <span>密码</span>
-            <input
-              type="password"
-              name="password"
-              autocomplete="new-password"
-              minlength="6"
-              maxlength="32"
-              required
-              placeholder="6-32 位，不能有空格">
-          </label>
+      <form class="auth-form" data-auth-panel="login" method="post" action="{{ url_for('login') }}">
+        <label>
+          <span>账号名</span>
+          <input type="text" name="username" autocomplete="username" required placeholder="player_abc">
+        </label>
 
-          <label>
-            <span>确认密码</span>
-            <input
-              type="password"
-              name="confirm_password"
-              autocomplete="new-password"
-              minlength="6"
-              maxlength="32"
-              required
-              placeholder="再次输入密码">
-          </label>
+        <label>
+          <span>密码</span>
+          <input type="password" name="password" autocomplete="current-password" required placeholder="输入密码">
+        </label>
 
-          <label>
-            <span>邮箱</span>
-            <input
-              type="email"
-              name="email"
-              autocomplete="email"
-              placeholder="可选">
-          </label>
+        <button type="submit">登录</button>
+        <a class="muted-link" href="{{ url_for('forgot_password') }}">忘记密码？暂未开放</a>
+      </form>
 
-          <button type="submit" id="submitButton">注册账号</button>
-        </form>
+      <form class="auth-form hidden" data-auth-panel="register" method="post" action="{{ url_for('register') }}">
+        <label>
+          <span>账号名</span>
+          <input
+            type="text"
+            name="username"
+            autocomplete="username"
+            minlength="3"
+            maxlength="16"
+            pattern="[A-Za-z0-9_]{3,16}"
+            required
+            placeholder="player_abc">
+        </label>
 
-        <div class="realm-box">
-          <span>Realmlist</span>
-          <strong>set realmlist {{ realmlist }}</strong>
-        </div>
+        <label>
+          <span>密码</span>
+          <input
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            minlength="6"
+            maxlength="32"
+            required
+            placeholder="6-32 位，不能有空格">
+        </label>
 
-        <p class="fine-print">轻量注册入口，账号创建由 AzerothCore worldserver SOAP 完成。</p>
-      </section>
-    </main>
+        <label>
+          <span>确认密码</span>
+          <input
+            type="password"
+            name="confirm_password"
+            autocomplete="new-password"
+            minlength="6"
+            maxlength="32"
+            required
+            placeholder="再次输入密码">
+        </label>
 
-    <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
-  </body>
-</html>
+        <label>
+          <span>邮箱</span>
+          <input type="email" name="email" autocomplete="email" placeholder="可选">
+        </label>
+
+        <button type="submit">注册账号</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}" defer></script>
+{% endblock %}

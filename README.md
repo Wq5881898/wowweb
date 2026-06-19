@@ -6,6 +6,10 @@
 
 - 账号名、密码、确认密码、邮箱格式校验
 - 通过 SOAP 执行 `account create username password`
+- 用户登录和基础 Dashboard
+- GM 可维护客户端下载链接，普通用户只可下载
+- 当前在线玩家查询
+- 问题提交和图片上传
 - 注册成功、重复账号、SOAP 不可用等友好提示
 - 简单 IP 限流
 - 基础日志记录到 `logs/app.log`
@@ -22,6 +26,10 @@ $env:SOAP_HOST = "127.0.0.1"
 $env:SOAP_PORT = "7878"
 $env:SOAP_USER = "websoap"
 $env:SOAP_PASS = "your-strong-password"
+$env:MYSQL_HOST = "127.0.0.1"
+$env:MYSQL_PORT = "3306"
+$env:MYSQL_USER = "acore"
+$env:MYSQL_PASS = "your-mysql-password"
 $env:SITE_TITLE = "My WoW Server"
 $env:REALMLIST = "wow.example.com"
 
@@ -67,15 +75,35 @@ SOAP 端口只应该监听 `127.0.0.1`，不要直接暴露到公网。
 | `SOAP_USER` | `websoap` | SOAP 账号 |
 | `SOAP_PASS` | `change-me` | SOAP 密码 |
 | `SOAP_TIMEOUT_SECONDS` | `8` | SOAP 请求超时时间 |
+| `MYSQL_HOST` | `127.0.0.1` | MySQL 地址 |
+| `MYSQL_PORT` | `3306` | MySQL 端口 |
+| `MYSQL_USER` | `acore` | MySQL 用户 |
+| `MYSQL_PASS` | `change-me` | MySQL 密码 |
+| `MYSQL_AUTH_DB` | `acore_auth` | AzerothCore 账号库 |
+| `MYSQL_CHARACTERS_DB` | `acore_characters` | AzerothCore 角色库 |
 | `SITE_TITLE` | `My WoW Server` | 页面服务器名称 |
 | `REALMLIST` | `wow.example.com` | 页面展示的 realmlist |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | 限流窗口 |
 | `RATE_LIMIT_MAX_ATTEMPTS` | `3` | 每个窗口允许提交次数 |
+| `GM_DOWNLOAD_LEVEL` | `3` | 可管理下载链接的 GM 等级 |
+| `MAX_UPLOAD_MB` | `5` | 问题提交图片大小限制 |
+
+## 页面
+
+- `/`：登录和注册入口，预留密码找回链接
+- `/dashboard`：登录后的账号基础信息
+- `/downloads`：客户端下载链接；GM 可添加、编辑、删除
+- `/online`：当前在线角色查询
+- `/issues`：问题提交，支持上传图片
 
 ## 验收清单
 
 - 本机访问 `http://127.0.0.1:8000/` 可以打开注册页面
 - 合法账号和密码可以成功注册
+- 已有账号可以登录并进入 Dashboard
+- GM 账号可以维护下载链接
+- 普通用户可以查看并打开下载链接
+- 用户可以提交问题和上传图片
 - HeidiSQL 中可以在 `acore_auth.account` 表看到新账号
 - 游戏客户端可以用新账号正常登录
 - 重复注册同名账号时，页面提示账号已存在
@@ -95,3 +123,4 @@ SOAP 端口只应该监听 `127.0.0.1`，不要直接暴露到公网。
 - Cloudflare Turnstile 验证码
 - 更完整的 IP 限流
 - 使用环境变量或 `.env` 管理真实 SOAP 密码，不要把真实密码提交到 GitHub
+- 对问题提交增加处理状态、回复和后台列表筛选

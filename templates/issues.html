@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <main class="content-shell">
+    <section class="page-heading">
+      <div>
+        <span class="server-mark">Support</span>
+        <h1>问题提交</h1>
+      </div>
+    </section>
+
+    <section class="tool-panel">
+      <h2>提交问题</h2>
+      <form class="issue-form" method="post" action="{{ url_for('submit_issue') }}" enctype="multipart/form-data">
+        <label>
+          <span>问题内容</span>
+          <textarea name="content" rows="6" required placeholder="描述你遇到的问题、角色名、发生时间等"></textarea>
+        </label>
+        <label>
+          <span>上传图片</span>
+          <input type="file" name="image" accept="image/png,image/jpeg,image/gif,image/webp">
+        </label>
+        <button type="submit">提交</button>
+      </form>
+    </section>
+
+    <section class="list-grid">
+      {% for issue in issues %}
+        <article class="issue-item">
+          <div class="issue-meta">
+            <strong>#{{ issue.id }} {{ issue.username }}</strong>
+            <span>{{ issue.created_at }}</span>
+          </div>
+          <p>{{ issue.content }}</p>
+          {% if issue.image_path %}
+            <a href="{{ url_for('static', filename=issue.image_path) }}" target="_blank" rel="noopener noreferrer">
+              查看上传图片
+            </a>
+          {% endif %}
+        </article>
+      {% else %}
+        <p class="empty-text">还没有问题记录。</p>
+      {% endfor %}
+    </section>
+  </main>
+{% endblock %}

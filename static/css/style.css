@@ -1,6 +1,8 @@
 :root {
   color-scheme: dark;
-  --panel: rgba(8, 15, 24, 0.78);
+  --bg: #05090f;
+  --panel: rgba(8, 15, 24, 0.86);
+  --panel-strong: rgba(12, 22, 34, 0.95);
   --panel-border: rgba(152, 206, 255, 0.2);
   --text: #eef6ff;
   --muted: #aebed0;
@@ -20,31 +22,44 @@ body {
   margin: 0;
   font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
   background:
-    linear-gradient(90deg, rgba(3, 8, 14, 0.88), rgba(3, 8, 14, 0.2) 48%, rgba(3, 8, 14, 0.88)),
-    linear-gradient(180deg, rgba(2, 6, 12, 0.1), rgba(2, 6, 12, 0.82)),
+    linear-gradient(90deg, rgba(3, 8, 14, 0.88), rgba(3, 8, 14, 0.32) 48%, rgba(3, 8, 14, 0.9)),
+    linear-gradient(180deg, rgba(2, 6, 12, 0.15), rgba(2, 6, 12, 0.88)),
     url("../img/background.png") center / cover fixed;
   color: var(--text);
 }
 
-.page-shell {
+a {
+  color: var(--ice);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.app-shell {
   min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 68px;
+  padding: 12px max(18px, calc((100vw - 1120px) / 2));
+  border-bottom: 1px solid rgba(152, 206, 255, 0.14);
+  background: rgba(5, 9, 15, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
   display: grid;
-  place-items: center;
-  padding: 32px 16px;
+  gap: 2px;
+  min-width: 180px;
 }
 
-.register-panel {
-  width: min(100%, 430px);
-  padding: 30px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--panel);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(14px);
-}
-
+.brand span,
 .server-mark {
-  margin-bottom: 8px;
   color: var(--gold-strong);
   font-size: 0.78rem;
   font-weight: 700;
@@ -52,14 +67,72 @@ body {
   text-transform: uppercase;
 }
 
+.brand strong {
+  color: var(--text);
+}
+
+.nav-links {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nav-links a {
+  padding: 9px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.nav-links a:hover {
+  background: rgba(137, 217, 255, 0.09);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.auth-page {
+  min-height: calc(100vh - 68px);
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+
+.auth-panel,
+.tool-panel,
+.table-panel,
+.download-item,
+.issue-item,
+.info-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px);
+}
+
+.auth-panel {
+  width: min(100%, 460px);
+  padding: 30px;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
 h1 {
-  margin: 0;
-  font-size: clamp(2rem, 8vw, 3rem);
-  line-height: 1.05;
+  margin-bottom: 0;
+  font-size: 2.2rem;
+  line-height: 1.08;
+}
+
+h2 {
+  font-size: 1.15rem;
 }
 
 .subtitle,
-.fine-print {
+.empty-text {
   color: var(--muted);
   line-height: 1.6;
 }
@@ -68,14 +141,49 @@ h1 {
   margin: 12px 0 22px;
 }
 
-.fine-print {
-  margin: 18px 0 0;
-  font-size: 0.88rem;
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
-.register-form {
+.tab-button,
+.ghost-button {
+  min-height: 40px;
+  border: 1px solid rgba(174, 190, 208, 0.22);
+  background: rgba(2, 8, 14, 0.45);
+  color: var(--muted);
+}
+
+.tab-button.active {
+  border-color: rgba(243, 202, 117, 0.55);
+  color: #1b1207;
+  background: linear-gradient(180deg, var(--gold-strong), var(--gold));
+}
+
+.auth-form,
+.management-form,
+.issue-form {
   display: grid;
   gap: 14px;
+}
+
+.management-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.management-form.compact {
+  margin-top: 12px;
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.hidden {
+  display: none;
 }
 
 label {
@@ -85,7 +193,8 @@ label {
   font-size: 0.92rem;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   min-height: 46px;
   padding: 0 13px;
@@ -97,14 +206,20 @@ input {
   font: inherit;
 }
 
-input:focus {
+textarea {
+  min-height: 110px;
+  padding-top: 12px;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus {
   border-color: var(--ice);
   box-shadow: 0 0 0 3px rgba(137, 217, 255, 0.16);
 }
 
 button {
-  min-height: 48px;
-  margin-top: 6px;
+  min-height: 46px;
   border: 0;
   border-radius: 6px;
   background: linear-gradient(180deg, var(--gold-strong), var(--gold));
@@ -114,13 +229,33 @@ button {
   font-weight: 800;
 }
 
-button:disabled {
-  cursor: wait;
-  opacity: 0.7;
+.danger-button {
+  width: 100%;
+  margin-top: 10px;
+  background: rgba(255, 140, 140, 0.14);
+  color: var(--danger);
+  border: 1px solid rgba(255, 140, 140, 0.35);
+}
+
+.ghost-button {
+  padding: 0 14px;
+  color: var(--text);
+}
+
+.muted-link {
+  justify-self: start;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.flash-stack {
+  width: min(1120px, calc(100% - 32px));
+  margin: 18px auto 0;
+  display: grid;
+  gap: 10px;
 }
 
 .status-message {
-  margin-bottom: 16px;
   padding: 12px 14px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -136,34 +271,140 @@ button:disabled {
   color: var(--danger);
 }
 
-.realm-box {
-  display: grid;
-  gap: 5px;
-  margin-top: 18px;
-  padding: 13px;
-  border: 1px solid rgba(137, 217, 255, 0.18);
-  border-radius: 6px;
-  background: rgba(137, 217, 255, 0.08);
+.content-shell {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 30px 0 56px;
 }
 
+.page-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.role-pill {
+  padding: 7px 10px;
+  border: 1px solid rgba(243, 202, 117, 0.35);
+  border-radius: 999px;
+  color: var(--gold-strong);
+  background: rgba(243, 202, 117, 0.08);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.info-card {
+  padding: 18px;
+}
+
+.info-card span,
 .realm-box span {
   color: var(--muted);
-  font-size: 0.78rem;
-  text-transform: uppercase;
+  font-size: 0.82rem;
 }
 
-.realm-box strong {
-  color: var(--ice);
+.info-card strong {
+  display: block;
+  margin-top: 6px;
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 480px) {
-  .page-shell {
-    align-items: end;
-    padding: 18px 12px;
+.tool-panel,
+.table-panel {
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.list-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.download-item,
+.issue-item {
+  padding: 18px;
+}
+
+.download-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+  gap: 18px;
+}
+
+.download-item p,
+.issue-item p {
+  color: var(--muted);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.primary-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: rgba(137, 217, 255, 0.1);
+}
+
+.edit-box summary {
+  cursor: pointer;
+  color: var(--gold-strong);
+}
+
+.issue-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(174, 190, 208, 0.14);
+  text-align: left;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+@media (max-width: 800px) {
+  .topbar,
+  .page-heading,
+  .issue-meta {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .register-panel {
+  .nav-links {
+    width: 100%;
+  }
+
+  .info-grid,
+  .management-form,
+  .download-item {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-panel {
     padding: 22px;
+  }
+
+  h1 {
+    font-size: 1.8rem;
   }
 }

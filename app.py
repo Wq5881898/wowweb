@@ -1,25 +1,50 @@
+import hashlib
 import logging
 import re
+import sqlite3
 import time
+import uuid
 from collections import defaultdict, deque
+from functools import wraps
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from xml.etree import ElementTree
 from xml.sax.saxutils import escape as xml_escape
 
+import pymysql
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import (
+    Flask,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from requests import RequestException
+from werkzeug.utils import secure_filename
 
 import config
 
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+UPLOAD_DIR = BASE_DIR / "static" / "uploads" / "issues"
+SITE_DB_PATH = DATA_DIR / "wowweb.db"
+
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+
+SRP6_N = int("894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7", 16)
+SRP6_G = 7
 
 app = Flask(__name__)
 app.config.from_object(config)
+app.secret_key = app.config["SECRET_KEY"]
+app.config["MAX_CONTENT_LENGTH"] = app.config["MAX_UPLOAD_MB"] * 1024 * 1024
 
 registration_attempts = defaultdict(deque)
 
@@ -33,12 +58,170 @@ def setup_logging():
         backupCount=5,
         encoding="utf-8",
     )
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     handler.setLevel(logging.INFO)
     app.logger.addHandler(handler)
     app.logger.setLevel(logging.INFO)
+
+
+def init_site_db():
+    DATA_DIR.mkdir(exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(SITE_DB_PATH) as db:
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS download_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                url TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS issues (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                username TEXT NOT NULL,
+                content TEXT NOT NULL,
+                image_path TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        db.commit()
+
+
+def site_db():
+    db = sqlite3.connect(SITE_DB_PATH)
+    db.row_factory = sqlite3.Row
+    return db
+
+
+def auth_db():
+    return pymysql.connect(
+        host=app.config["MYSQL_HOST"],
+        port=app.config["MYSQL_PORT"],
+        user=app.config["MYSQL_USER"],
+        password=app.config["MYSQL_PASS"],
+        database=app.config["MYSQL_AUTH_DB"],
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+
+
+def characters_db():
+    return pymysql.connect(
+        host=app.config["MYSQL_HOST"],
+        port=app.config["MYSQL_PORT"],
+        user=app.config["MYSQL_USER"],
+        password=app.config["MYSQL_PASS"],
+        database=app.config["MYSQL_CHARACTERS_DB"],
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+
+
+def normalize_account_text(value):
+    return (value or "").strip().upper()
+
+
+def calculate_srp6_verifier(username, password, salt):
+    safe_username = normalize_account_text(username)
+    safe_password = normalize_account_text(password)
+    identity_hash = hashlib.sha1(f"{safe_username}:{safe_password}".encode("utf-8")).digest()
+    x_hash = hashlib.sha1(salt + identity_hash).digest()
+    x = int.from_bytes(x_hash, "little")
+    return pow(SRP6_G, x, SRP6_N).to_bytes(32, "little")
+
+
+def get_account(username):
+    safe_username = normalize_account_text(username)
+    with auth_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.username,
+                    a.email,
+                    a.joindate,
+                    a.last_login,
+                    a.expansion,
+                    a.salt,
+                    a.verifier,
+                    COALESCE(MAX(aa.gmlevel), 0) AS gmlevel
+                FROM account a
+                LEFT JOIN account_access aa ON aa.id = a.id AND aa.RealmID = -1
+                WHERE a.username = %s
+                GROUP BY a.id
+                """,
+                (safe_username,),
+            )
+            return cursor.fetchone()
+
+
+def check_account_password(account, password):
+    expected = calculate_srp6_verifier(account["username"], password, account["salt"])
+    return expected == account["verifier"]
+
+
+def current_user():
+    account_id = session.get("account_id")
+    if not account_id:
+        return None
+
+    with auth_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    a.id,
+                    a.username,
+                    a.email,
+                    a.joindate,
+                    a.last_login,
+                    a.expansion,
+                    COALESCE(MAX(aa.gmlevel), 0) AS gmlevel
+                FROM account a
+                LEFT JOIN account_access aa ON aa.id = a.id AND aa.RealmID = -1
+                WHERE a.id = %s
+                GROUP BY a.id
+                """,
+                (account_id,),
+            )
+            return cursor.fetchone()
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("account_id"):
+            flash("请先登录。", "error")
+            return redirect(url_for("index"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def gm_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        user = current_user()
+        if not user or int(user["gmlevel"] or 0) < app.config["GM_DOWNLOAD_LEVEL"]:
+            flash("需要 GM 权限。", "error")
+            return redirect(url_for("downloads"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+@app.context_processor
+def inject_user():
+    return {"current_user": current_user(), "site_title": app.config["SITE_TITLE"]}
 
 
 def client_ip():
@@ -158,24 +341,65 @@ def classify_registration_error(error):
     return "注册失败，请联系管理员。"
 
 
+def allowed_image(filename):
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
 @app.get("/")
 def index():
-    return render_template(
-        "index.html",
-        site_title=app.config["SITE_TITLE"],
-        realmlist=app.config["REALMLIST"],
-    )
+    if session.get("account_id"):
+        return redirect(url_for("dashboard"))
+    return render_template("index.html", site_title=app.config["SITE_TITLE"])
+
+
+@app.post("/login")
+def login():
+    username = (request.form.get("username") or "").strip()
+    password = request.form.get("password") or ""
+
+    if not username or not password:
+        flash("请输入账号名和密码。", "error")
+        return redirect(url_for("index"))
+
+    try:
+        account = get_account(username)
+    except pymysql.MySQLError:
+        app.logger.exception("Login database error")
+        flash("登录服务暂时不可用。", "error")
+        return redirect(url_for("index"))
+
+    if not account or not check_account_password(account, password):
+        flash("账号或密码错误。", "error")
+        return redirect(url_for("index"))
+
+    session.clear()
+    session["account_id"] = account["id"]
+    session["username"] = account["username"]
+    flash("登录成功。", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    flash("已退出登录。", "success")
+    return redirect(url_for("index"))
+
+
+@app.get("/forgot-password")
+def forgot_password():
+    return render_template("forgot_password.html")
 
 
 @app.post("/register")
 def register():
     ip_address = client_ip()
     if not rate_limit_ok(ip_address):
-        return jsonify({"ok": False, "message": "提交太频繁，请稍后再试。"}), 429
+        return handle_form_response(False, "提交太频繁，请稍后再试。", 429)
 
     payload, validation_error = validate_registration(request.form)
     if validation_error:
-        return jsonify({"ok": False, "message": validation_error}), 400
+        return handle_form_response(False, validation_error, 400)
 
     command = f"account create {payload['username']} {payload['password']}"
 
@@ -192,26 +416,155 @@ def register():
             ip_address,
             public_message,
         )
-        return jsonify({"ok": False, "message": public_message}), 400
+        return handle_form_response(False, public_message, 400)
     except Exception:
         app.logger.exception(
             "Unexpected registration error for username=%s ip=%s",
             payload["username"],
             ip_address,
         )
-        return jsonify({"ok": False, "message": "注册失败，请联系管理员。"}), 500
+        return handle_form_response(False, "注册失败，请联系管理员。", 500)
 
     app.logger.info("Registration succeeded for username=%s ip=%s", payload["username"], ip_address)
-    return jsonify(
-        {
-            "ok": True,
-            "message": "注册成功！现在可以进入游戏登录。",
-            "realmlist": app.config["REALMLIST"],
-        }
-    )
+    return handle_form_response(True, "注册成功！现在可以登录。", 200)
+
+
+def handle_form_response(ok, message, status_code):
+    if request.accept_mimetypes.best == "application/json" or request.headers.get("X-Requested-With"):
+        return jsonify({"ok": ok, "message": message, "realmlist": app.config["REALMLIST"]}), status_code
+
+    flash(message, "success" if ok else "error")
+    return redirect(url_for("index"))
+
+
+@app.get("/dashboard")
+@login_required
+def dashboard():
+    user = current_user()
+    return render_template("dashboard.html", user=user)
+
+
+@app.get("/downloads")
+@login_required
+def downloads():
+    user = current_user()
+    with site_db() as db:
+        links = db.execute("SELECT * FROM download_links ORDER BY id DESC").fetchall()
+    return render_template("downloads.html", user=user, links=links)
+
+
+@app.post("/downloads")
+@login_required
+@gm_required
+def save_download():
+    title = (request.form.get("title") or "").strip()
+    url = (request.form.get("url") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    link_id = request.form.get("link_id")
+    action = request.form.get("action")
+
+    with site_db() as db:
+        if action == "delete" and link_id:
+            db.execute("DELETE FROM download_links WHERE id = ?", (link_id,))
+            flash("下载链接已删除。", "success")
+        elif title and url:
+            if link_id:
+                db.execute(
+                    """
+                    UPDATE download_links
+                    SET title = ?, url = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (title, url, description, link_id),
+                )
+                flash("下载链接已更新。", "success")
+            else:
+                db.execute(
+                    "INSERT INTO download_links(title, url, description) VALUES(?, ?, ?)",
+                    (title, url, description),
+                )
+                flash("下载链接已添加。", "success")
+        else:
+            flash("标题和链接不能为空。", "error")
+        db.commit()
+
+    return redirect(url_for("downloads"))
+
+
+@app.get("/online")
+@login_required
+def online_players():
+    try:
+        with characters_db() as db:
+            with db.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT guid, account, name, level, race, class, map, zone
+                    FROM characters
+                    WHERE online = 1
+                    ORDER BY name
+                    """
+                )
+                players = cursor.fetchall()
+    except pymysql.MySQLError:
+        app.logger.exception("Online players query failed")
+        players = None
+
+    return render_template("online.html", players=players)
+
+
+@app.get("/issues")
+@login_required
+def issues():
+    user = current_user()
+    with site_db() as db:
+        if int(user["gmlevel"] or 0) >= app.config["GM_DOWNLOAD_LEVEL"]:
+            items = db.execute("SELECT * FROM issues ORDER BY id DESC LIMIT 100").fetchall()
+        else:
+            items = db.execute(
+                "SELECT * FROM issues WHERE account_id = ? ORDER BY id DESC LIMIT 50",
+                (user["id"],),
+            ).fetchall()
+    return render_template("issues.html", user=user, issues=items)
+
+
+@app.post("/issues")
+@login_required
+def submit_issue():
+    user = current_user()
+    content = (request.form.get("content") or "").strip()
+    image = request.files.get("image")
+    image_path = None
+
+    if not content:
+        flash("请输入问题内容。", "error")
+        return redirect(url_for("issues"))
+
+    if image and image.filename:
+        if not allowed_image(image.filename):
+            flash("图片格式仅支持 png、jpg、jpeg、gif、webp。", "error")
+            return redirect(url_for("issues"))
+
+        original = secure_filename(image.filename)
+        extension = original.rsplit(".", 1)[1].lower()
+        filename = f"{uuid.uuid4().hex}.{extension}"
+        target = UPLOAD_DIR / filename
+        image.save(target)
+        image_path = f"uploads/issues/{filename}"
+
+    with site_db() as db:
+        db.execute(
+            "INSERT INTO issues(account_id, username, content, image_path) VALUES(?, ?, ?, ?)",
+            (user["id"], user["username"], content, image_path),
+        )
+        db.commit()
+
+    flash("问题已提交。", "success")
+    return redirect(url_for("issues"))
 
 
 setup_logging()
+init_site_db()
 
 
 if __name__ == "__main__":

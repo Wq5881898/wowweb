@@ -5,4 +5,6 @@ venv/
 .env
 logs/*.log
 logs/*.log.*
+data/
+static/uploads/
 .pytest_cache/

@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <main class="content-shell">
+    <section class="page-heading">
+      <div>
+        <span class="server-mark">Dashboard</span>
+        <h1>{{ user.username }}</h1>
+      </div>
+      <span class="role-pill">{{ "GM" if user.gmlevel else "Player" }}</span>
+    </section>
+
+    <section class="info-grid">
+      <article class="info-card">
+        <span>账号 ID</span>
+        <strong>{{ user.id }}</strong>
+      </article>
+      <article class="info-card">
+        <span>注册时间</span>
+        <strong>{{ user.joindate }}</strong>
+      </article>
+      <article class="info-card">
+        <span>最后登录</span>
+        <strong>{{ user.last_login or "暂无记录" }}</strong>
+      </article>
+      <article class="info-card">
+        <span>资料片</span>
+        <strong>{{ user.expansion }}</strong>
+      </article>
+    </section>
+  </main>
+{% endblock %}

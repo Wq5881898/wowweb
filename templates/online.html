@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <main class="content-shell">
+    <section class="page-heading">
+      <div>
+        <span class="server-mark">Online</span>
+        <h1>当前在线玩家</h1>
+      </div>
+    </section>
+
+    {% if players is none %}
+      <div class="tool-panel">
+        <p class="empty-text">在线查询暂时不可用，请稍后再试。</p>
+      </div>
+    {% elif players %}
+      <section class="table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th>角色名</th>
+              <th>等级</th>
+              <th>账号 ID</th>
+              <th>地图</th>
+              <th>区域</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for player in players %}
+              <tr>
+                <td>{{ player.name }}</td>
+                <td>{{ player.level }}</td>
+                <td>{{ player.account }}</td>
+                <td>{{ player.map }}</td>
+                <td>{{ player.zone }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% else %}
+      <div class="tool-panel">
+        <p class="empty-text">当前没有在线玩家。</p>
+      </div>
+    {% endif %}
+  </main>
+{% endblock %}
