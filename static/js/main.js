@@ -59,7 +59,7 @@ form.addEventListener("submit", async (event) => {
       return;
     }
 
-    showMessage("success", `${result.message} Realmlist: set realmlist ${result.realmlist}`);
+    showMessage("success", result.message);
     form.reset();
   } catch (error) {
     showMessage("error", "服务器注册服务暂时不可用。");
