@@ -194,7 +194,8 @@ label {
 }
 
 input,
-textarea {
+textarea,
+select {
   width: 100%;
   min-height: 46px;
   padding: 0 13px;
@@ -213,7 +214,8 @@ textarea {
 }
 
 input:focus,
-textarea:focus {
+textarea:focus,
+select:focus {
   border-color: var(--ice);
   box-shadow: 0 0 0 3px rgba(137, 217, 255, 0.16);
 }
@@ -365,6 +367,56 @@ button {
   color: var(--muted);
 }
 
+.filter-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.server-panel {
+  margin-top: 16px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-grid div,
+.reply-box {
+  padding: 12px;
+  border: 1px solid rgba(137, 217, 255, 0.16);
+  border-radius: 6px;
+  background: rgba(137, 217, 255, 0.07);
+}
+
+.status-grid span,
+.reply-box span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.status-grid strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  margin: 10px 0;
+  padding: 0 9px;
+  border: 1px solid rgba(243, 202, 117, 0.35);
+  border-radius: 999px;
+  color: var(--gold-strong);
+  background: rgba(243, 202, 117, 0.08);
+  font-size: 0.85rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -396,7 +448,9 @@ th {
 
   .info-grid,
   .management-form,
-  .download-item {
+  .download-item,
+  .filter-form,
+  .status-grid {
     grid-template-columns: 1fr;
   }
 

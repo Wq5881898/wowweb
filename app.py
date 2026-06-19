@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import os
+import random
 import re
 import sqlite3
 import time
@@ -37,6 +39,12 @@ SITE_DB_PATH = DATA_DIR / "wowweb.db"
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,16}$")
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+ISSUE_STATUSES = {
+    "open": "待处理",
+    "in_progress": "处理中",
+    "resolved": "已解决",
+    "closed": "已关闭",
+}
 
 SRP6_N = int("894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7", 16)
 SRP6_G = 7
@@ -88,10 +96,26 @@ def init_site_db():
                 username TEXT NOT NULL,
                 content TEXT NOT NULL,
                 image_path TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                gm_reply TEXT,
+                replied_by TEXT,
+                replied_at TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        existing_issue_columns = {
+            row[1] for row in db.execute("PRAGMA table_info(issues)").fetchall()
+        }
+        migrations = {
+            "status": "ALTER TABLE issues ADD COLUMN status TEXT NOT NULL DEFAULT 'open'",
+            "gm_reply": "ALTER TABLE issues ADD COLUMN gm_reply TEXT",
+            "replied_by": "ALTER TABLE issues ADD COLUMN replied_by TEXT",
+            "replied_at": "ALTER TABLE issues ADD COLUMN replied_at TEXT",
+        }
+        for column, statement in migrations.items():
+            if column not in existing_issue_columns:
+                db.execute(statement)
         db.commit()
 
 
@@ -138,6 +162,12 @@ def calculate_srp6_verifier(username, password, salt):
     return pow(SRP6_G, x, SRP6_N).to_bytes(32, "little")
 
 
+def make_srp6_registration_data(username, password):
+    salt = os.urandom(32)
+    verifier = calculate_srp6_verifier(username, password, salt)
+    return salt, verifier
+
+
 def get_account(username):
     safe_username = normalize_account_text(username)
     with auth_db() as db:
@@ -164,20 +194,12 @@ def get_account(username):
             return cursor.fetchone()
 
 
-def check_account_password(account, password):
-    expected = calculate_srp6_verifier(account["username"], password, account["salt"])
-    return expected == account["verifier"]
-
-
-def current_user():
-    account_id = session.get("account_id")
-    if not account_id:
-        return None
-
+def get_account_by_id(account_id, include_secret=False):
+    secret_columns = ", a.salt, a.verifier" if include_secret else ""
     with auth_db() as db:
         with db.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 SELECT
                     a.id,
                     a.username,
@@ -186,6 +208,7 @@ def current_user():
                     a.last_login,
                     a.expansion,
                     COALESCE(MAX(aa.gmlevel), 0) AS gmlevel
+                    {secret_columns}
                 FROM account a
                 LEFT JOIN account_access aa ON aa.id = a.id AND aa.RealmID = -1
                 WHERE a.id = %s
@@ -194,6 +217,75 @@ def current_user():
                 (account_id,),
             )
             return cursor.fetchone()
+
+
+def check_account_password(account, password):
+    expected = calculate_srp6_verifier(account["username"], password, account["salt"])
+    return expected == account["verifier"]
+
+
+def update_account_password(account_id, username, new_password):
+    salt, verifier = make_srp6_registration_data(username, new_password)
+    with auth_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "UPDATE account SET salt = %s, verifier = %s, session_key = NULL WHERE id = %s",
+                (salt, verifier, account_id),
+            )
+        db.commit()
+
+
+def count_user_characters(account_id):
+    with characters_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS total FROM characters WHERE account = %s", (account_id,))
+            row = cursor.fetchone()
+            return int(row["total"] or 0)
+
+
+def count_online_players():
+    with characters_db() as db:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS total FROM characters WHERE online = 1")
+            row = cursor.fetchone()
+            return int(row["total"] or 0)
+
+
+def server_status_snapshot():
+    status = {
+        "online": False,
+        "message": "worldserver 暂时不可用",
+        "players": None,
+        "uptime": None,
+        "db_online_players": None,
+    }
+
+    try:
+        info = execute_soap_command("server info")
+        status["online"] = True
+        status["message"] = "worldserver 在线"
+        player_match = re.search(r"Connected players:\s*(\d+)", info)
+        uptime_match = re.search(r"Server uptime:\s*([^\r\n]+)", info)
+        if player_match:
+            status["players"] = int(player_match.group(1))
+        if uptime_match:
+            status["uptime"] = uptime_match.group(1).strip()
+    except Exception:
+        app.logger.warning("Server status SOAP query failed", exc_info=True)
+
+    try:
+        status["db_online_players"] = count_online_players()
+    except pymysql.MySQLError:
+        app.logger.warning("Online count query failed", exc_info=True)
+
+    return status
+
+
+def current_user():
+    account_id = session.get("account_id")
+    if not account_id:
+        return None
+    return get_account_by_id(account_id)
 
 
 def login_required(view):
@@ -213,7 +305,7 @@ def gm_required(view):
         user = current_user()
         if not user or int(user["gmlevel"] or 0) < app.config["GM_DOWNLOAD_LEVEL"]:
             flash("需要 GM 权限。", "error")
-            return redirect(url_for("downloads"))
+            return redirect(url_for("dashboard"))
         return view(*args, **kwargs)
 
     return wrapped
@@ -221,7 +313,11 @@ def gm_required(view):
 
 @app.context_processor
 def inject_user():
-    return {"current_user": current_user(), "site_title": app.config["SITE_TITLE"]}
+    return {
+        "current_user": current_user(),
+        "site_title": app.config["SITE_TITLE"],
+        "issue_statuses": ISSUE_STATUSES,
+    }
 
 
 def client_ip():
@@ -244,6 +340,22 @@ def rate_limit_ok(ip_address):
 
     attempts.append(now)
     return True
+
+
+def refresh_captcha():
+    left = random.randint(2, 9)
+    right = random.randint(2, 9)
+    session["captcha_answer"] = str(left + right)
+    session["captcha_question"] = f"{left} + {right} = ?"
+    return session["captcha_question"]
+
+
+def captcha_question():
+    return session.get("captcha_question") or refresh_captcha()
+
+
+def captcha_ok(value):
+    return (value or "").strip() == session.get("captcha_answer")
 
 
 def validate_registration(data):
@@ -349,7 +461,11 @@ def allowed_image(filename):
 def index():
     if session.get("account_id"):
         return redirect(url_for("dashboard"))
-    return render_template("index.html", site_title=app.config["SITE_TITLE"])
+    return render_template(
+        "index.html",
+        site_title=app.config["SITE_TITLE"],
+        captcha_question=captcha_question(),
+    )
 
 
 @app.post("/login")
@@ -397,8 +513,13 @@ def register():
     if not rate_limit_ok(ip_address):
         return handle_form_response(False, "提交太频繁，请稍后再试。", 429)
 
+    if not captcha_ok(request.form.get("captcha_answer")):
+        refresh_captcha()
+        return handle_form_response(False, "验证码不正确，请重新输入。", 400)
+
     payload, validation_error = validate_registration(request.form)
     if validation_error:
+        refresh_captcha()
         return handle_form_response(False, validation_error, 400)
 
     command = f"account create {payload['username']} {payload['password']}"
@@ -416,6 +537,7 @@ def register():
             ip_address,
             public_message,
         )
+        refresh_captcha()
         return handle_form_response(False, public_message, 400)
     except Exception:
         app.logger.exception(
@@ -423,9 +545,11 @@ def register():
             payload["username"],
             ip_address,
         )
+        refresh_captcha()
         return handle_form_response(False, "注册失败，请联系管理员。", 500)
 
     app.logger.info("Registration succeeded for username=%s ip=%s", payload["username"], ip_address)
+    refresh_captcha()
     return handle_form_response(True, "注册成功！现在可以登录。", 200)
 
 
@@ -441,7 +565,48 @@ def handle_form_response(ok, message, status_code):
 @login_required
 def dashboard():
     user = current_user()
-    return render_template("dashboard.html", user=user)
+    try:
+        character_count = count_user_characters(user["id"])
+    except pymysql.MySQLError:
+        character_count = None
+    return render_template(
+        "dashboard.html",
+        user=user,
+        character_count=character_count,
+        server_status=server_status_snapshot(),
+        realmlist=app.config["REALMLIST"],
+    )
+
+
+@app.get("/account/security")
+@login_required
+def account_security():
+    return render_template("account_security.html")
+
+
+@app.post("/account/security")
+@login_required
+def change_password():
+    current_password = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    confirm_password = request.form.get("confirm_password") or ""
+    account = get_account_by_id(session["account_id"], include_secret=True)
+
+    if not account or not check_account_password(account, current_password):
+        flash("当前密码不正确。", "error")
+        return redirect(url_for("account_security"))
+
+    if not 6 <= len(new_password) <= 32 or any(char.isspace() for char in new_password):
+        flash("新密码必须为 6 到 32 位，并且不能包含空格。", "error")
+        return redirect(url_for("account_security"))
+
+    if new_password != confirm_password:
+        flash("两次输入的新密码不一致。", "error")
+        return redirect(url_for("account_security"))
+
+    update_account_password(account["id"], account["username"], new_password)
+    flash("密码已修改，请使用新密码登录。", "success")
+    return redirect(url_for("dashboard"))
 
 
 @app.get("/downloads")
@@ -517,15 +682,31 @@ def online_players():
 @login_required
 def issues():
     user = current_user()
+    status_filter = request.args.get("status") or ""
+    params = []
+
+    if int(user["gmlevel"] or 0) >= app.config["GM_DOWNLOAD_LEVEL"]:
+        query = "SELECT * FROM issues"
+        if status_filter in ISSUE_STATUSES:
+            query += " WHERE status = ?"
+            params.append(status_filter)
+        query += " ORDER BY id DESC LIMIT 100"
+    else:
+        query = "SELECT * FROM issues WHERE account_id = ?"
+        params.append(user["id"])
+        if status_filter in ISSUE_STATUSES:
+            query += " AND status = ?"
+            params.append(status_filter)
+        query += " ORDER BY id DESC LIMIT 50"
+
     with site_db() as db:
-        if int(user["gmlevel"] or 0) >= app.config["GM_DOWNLOAD_LEVEL"]:
-            items = db.execute("SELECT * FROM issues ORDER BY id DESC LIMIT 100").fetchall()
-        else:
-            items = db.execute(
-                "SELECT * FROM issues WHERE account_id = ? ORDER BY id DESC LIMIT 50",
-                (user["id"],),
-            ).fetchall()
-    return render_template("issues.html", user=user, issues=items)
+        items = db.execute(query, params).fetchall()
+    return render_template(
+        "issues.html",
+        user=user,
+        issues=items,
+        status_filter=status_filter,
+    )
 
 
 @app.post("/issues")
@@ -560,6 +741,36 @@ def submit_issue():
         db.commit()
 
     flash("问题已提交。", "success")
+    return redirect(url_for("issues"))
+
+
+@app.post("/issues/<int:issue_id>/moderate")
+@login_required
+@gm_required
+def moderate_issue(issue_id):
+    status = request.form.get("status") or "open"
+    reply = (request.form.get("gm_reply") or "").strip()
+    user = current_user()
+
+    if status not in ISSUE_STATUSES:
+        flash("问题状态不正确。", "error")
+        return redirect(url_for("issues"))
+
+    with site_db() as db:
+        db.execute(
+            """
+            UPDATE issues
+            SET status = ?,
+                gm_reply = ?,
+                replied_by = ?,
+                replied_at = CASE WHEN ? = '' THEN replied_at ELSE CURRENT_TIMESTAMP END
+            WHERE id = ?
+            """,
+            (status, reply or None, user["username"] if reply else None, reply, issue_id),
+        )
+        db.commit()
+
+    flash("问题处理信息已更新。", "success")
     return redirect(url_for("issues"))
 
 

@@ -7,9 +7,12 @@
 - 账号名、密码、确认密码、邮箱格式校验
 - 通过 SOAP 执行 `account create username password`
 - 用户登录和基础 Dashboard
+- Dashboard 服务器状态面板
+- 登录用户修改密码
 - GM 可维护客户端下载链接，普通用户只可下载
 - 当前在线玩家查询
-- 问题提交和图片上传
+- 问题提交、图片上传、状态处理和 GM 回复
+- 注册数学验证码
 - 注册成功、重复账号、SOAP 不可用等友好提示
 - 简单 IP 限流
 - 基础日志记录到 `logs/app.log`
@@ -22,16 +25,8 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
-$env:SOAP_HOST = "127.0.0.1"
-$env:SOAP_PORT = "7878"
-$env:SOAP_USER = "websoap"
-$env:SOAP_PASS = "your-strong-password"
-$env:MYSQL_HOST = "127.0.0.1"
-$env:MYSQL_PORT = "3306"
-$env:MYSQL_USER = "acore"
-$env:MYSQL_PASS = "your-mysql-password"
-$env:SITE_TITLE = "My WoW Server"
-$env:REALMLIST = "wow.example.com"
+copy .env.example .env
+# 编辑 .env，填入 SOAP_PASS、MYSQL_PASS 和 SECRET_KEY
 
 python app.py
 ```
@@ -88,22 +83,28 @@ SOAP 端口只应该监听 `127.0.0.1`，不要直接暴露到公网。
 | `GM_DOWNLOAD_LEVEL` | `3` | 可管理下载链接的 GM 等级 |
 | `MAX_UPLOAD_MB` | `5` | 问题提交图片大小限制 |
 
+也可以复制 `.env.example` 为 `.env`，项目启动时会自动读取 `.env`。`.env` 已加入 `.gitignore`，不要提交真实密码。
+
 ## 页面
 
 - `/`：登录和注册入口，预留密码找回链接
 - `/dashboard`：登录后的账号基础信息
 - `/downloads`：客户端下载链接；GM 可添加、编辑、删除
 - `/online`：当前在线角色查询
-- `/issues`：问题提交，支持上传图片
+- `/account/security`：修改当前登录账号密码
+- `/issues`：问题提交，支持上传图片；GM 可筛选状态、修改状态、填写回复
 
 ## 验收清单
 
 - 本机访问 `http://127.0.0.1:8000/` 可以打开注册页面
 - 合法账号和密码可以成功注册
 - 已有账号可以登录并进入 Dashboard
+- 登录用户可以修改密码
+- Dashboard 能显示服务器状态
 - GM 账号可以维护下载链接
 - 普通用户可以查看并打开下载链接
 - 用户可以提交问题和上传图片
+- GM 可以回复问题并更新处理状态
 - HeidiSQL 中可以在 `acore_auth.account` 表看到新账号
 - 游戏客户端可以用新账号正常登录
 - 重复注册同名账号时，页面提示账号已存在

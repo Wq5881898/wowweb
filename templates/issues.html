@@ -24,6 +24,21 @@
       </form>
     </section>
 
+    <section class="tool-panel">
+      <form class="filter-form" method="get" action="{{ url_for('issues') }}">
+        <label>
+          <span>状态筛选</span>
+          <select name="status">
+            <option value="">全部</option>
+            {% for key, label in issue_statuses.items() %}
+              <option value="{{ key }}" {% if status_filter == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">筛选</button>
+      </form>
+    </section>
+
     <section class="list-grid">
       {% for issue in issues %}
         <article class="issue-item">
@@ -31,11 +46,41 @@
             <strong>#{{ issue.id }} {{ issue.username }}</strong>
             <span>{{ issue.created_at }}</span>
           </div>
+          <span class="status-pill">{{ issue_statuses.get(issue.status, issue.status) }}</span>
           <p>{{ issue.content }}</p>
           {% if issue.image_path %}
             <a href="{{ url_for('static', filename=issue.image_path) }}" target="_blank" rel="noopener noreferrer">
               查看上传图片
             </a>
+          {% endif %}
+
+          {% if issue.gm_reply %}
+            <div class="reply-box">
+              <strong>GM 回复：{{ issue.replied_by or "GM" }}</strong>
+              <p>{{ issue.gm_reply }}</p>
+              <span>{{ issue.replied_at }}</span>
+            </div>
+          {% endif %}
+
+          {% if user.gmlevel >= 3 %}
+            <details class="edit-box">
+              <summary>处理问题</summary>
+              <form class="issue-form" method="post" action="{{ url_for('moderate_issue', issue_id=issue.id) }}">
+                <label>
+                  <span>状态</span>
+                  <select name="status">
+                    {% for key, label in issue_statuses.items() %}
+                      <option value="{{ key }}" {% if issue.status == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>
+                  <span>GM 回复</span>
+                  <textarea name="gm_reply" rows="4">{{ issue.gm_reply or "" }}</textarea>
+                </label>
+                <button type="submit">保存处理结果</button>
+              </form>
+            </details>
           {% endif %}
         </article>
       {% else %}
