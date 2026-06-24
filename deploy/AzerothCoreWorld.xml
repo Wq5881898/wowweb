@@ -1,0 +1,22 @@
+<service>
+  <id>AzerothCoreWorld</id>
+  <name>AzerothCore World Server</name>
+  <description>Runs the AzerothCore world server and local SOAP endpoint.</description>
+  <executable>C:\Azerothcore\azerothcore-wotlk\build\bin\Debug\worldserver.exe</executable>
+  <arguments>--config configs/worldserver.conf</arguments>
+  <workingdirectory>C:\Azerothcore\azerothcore-wotlk\build\bin\Debug</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <depend>MySQL84</depend>
+  <depend>AzerothCoreAuth</depend>
+  <stoptimeout>180sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <onfailure action="restart" delay="15 sec" />
+  <onfailure action="restart" delay="60 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>C:\AzerothCoreServices\logs\world</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>20971520</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

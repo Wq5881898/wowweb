@@ -1,0 +1,21 @@
+<service>
+  <id>AzerothCoreAuth</id>
+  <name>AzerothCore Auth Server</name>
+  <description>Runs the AzerothCore authentication server.</description>
+  <executable>C:\Azerothcore\azerothcore-wotlk\build\bin\Debug\authserver.exe</executable>
+  <arguments>--config configs/authserver.conf</arguments>
+  <workingdirectory>C:\Azerothcore\azerothcore-wotlk\build\bin\Debug</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <depend>MySQL84</depend>
+  <stoptimeout>60sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>C:\AzerothCoreServices\logs\auth</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10485760</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>

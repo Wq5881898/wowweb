@@ -8,6 +8,7 @@
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
   <depend>MySQL84</depend>
+  <depend>AzerothCoreWorld</depend>
   <stoptimeout>20sec</stoptimeout>
   <onfailure action="restart" delay="10 sec" />
   <onfailure action="restart" delay="30 sec" />
