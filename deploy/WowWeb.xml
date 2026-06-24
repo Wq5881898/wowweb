@@ -1,0 +1,20 @@
+<service>
+  <id>WowWeb</id>
+  <name>WowWeb Flask Application</name>
+  <description>Runs the WowWeb Flask portal with Waitress.</description>
+  <executable>C:\Azerothcore\wowweb\.venv\Scripts\python.exe</executable>
+  <arguments>-m waitress --host=127.0.0.1 --port=8000 app:app</arguments>
+  <workingdirectory>C:\Azerothcore\wowweb</workingdirectory>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <depend>MySQL84</depend>
+  <stoptimeout>20sec</stoptimeout>
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <logpath>C:\Azerothcore\wowweb\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10485760</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+</service>
